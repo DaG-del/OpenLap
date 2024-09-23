@@ -1,0 +1,7 @@
+Brakes,Disc Outer Diameter,250,mm,Assumed to be the same on all corners.
+,Pad Height,40,mm,Assumed to be the same on all corners.
+,Pad Friction Coefficient,0.45,-,Assumed to be the same on all pads. Recommended value: 0.45
+,Caliper Number of Pistons,6,-,Assumed to be the same on all corners.
+,Caliper Piston Diameter,40,mm,Assumed to be the same on all corners.
+,Master Cylinder Piston Diameter,25,mm,Assumed to be the same both front and rear.
+,Pedal Ratio,4,-,[Foot Force Application Point Lever Arm]/[Master Cylinder Lever Arm]
