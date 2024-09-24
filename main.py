@@ -1,5 +1,7 @@
 import math
 import helper_lib
+import matplotlib.pyplot as mlt
+
 
 f = open("motor.csv", "r")
 f = f.readlines()
@@ -99,3 +101,5 @@ C = [[2*CF, 2*(CF+CR)], [2*CF*a, 2*(CF*a + CR*b)]]
 
 
 [torque, speed] = helper_lib.tsc(max_power, max_torque, max_rpm)
+mlt.plot(speed, torque)
+mlt.show()
