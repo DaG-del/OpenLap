@@ -1,6 +1,20 @@
 import math
 
-f = open("brake.csv", "r")
+
+f = open("tires.csv", "r")
+f = f.readlines()
+line = []
+
+for ef in range(len(f)):
+    line.append(f[ef].split(",")[2])
+
+M = float(line[0].split(",")[2])
+df = float(line[1].split(",")[2])
+L = float(line[2].split(",")[2])
+rack = float(line[3].split(",")[2])
+
+
+f = open("tires.csv", "r")
 f = f.readlines()
 line = []
 
@@ -8,7 +22,7 @@ for ef in range(len(f)):
     line.append(f[ef].split(",")[2])
 
 factor_grip = float(line[0])
-tyre_radius = float(line[1])
+tyre_radius = float(line[1])/1000
 Cr = float(line[2])
 mu_x = float(line[3])
 mu_x_M = float(line[4])

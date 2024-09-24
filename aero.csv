@@ -1,0 +1,7 @@
+Aerodynamics,Lift Coefficient CL,-4.8,-,Positive = Lift / Negative = Downforce
+,Drag Coefficient CD,-1.2,-,Should be negative
+,CL Scale Multiplier,1,-,
+,CD Scale Multiplier,1,-,
+,Front Aero Distribution,50,%,
+,Frontal Area,1,m2,
+,Air Density,1.225,kg/m3,Recommended value:  1.225
