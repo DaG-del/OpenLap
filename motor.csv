@@ -1,9 +1,6 @@
-Category,Description,Value
 Engine,Power Factor Multiplier,1
 ,Thermal Efficiency,0.35
 ,Fuel Lower Heating Value,47200000
-Transmission,Drive Type,NaN
-,Gear Shift Time,0.01
 ,Primary Gear Efficiency,1
 ,Final Gear Efficiency,0.92
 ,Gearbox Efficiency,0.98

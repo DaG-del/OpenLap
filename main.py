@@ -1,7 +1,7 @@
 import math
 
 
-f = open("aero.csv", "r")
+f = open("motor.csv", "r")
 f = f.readlines()
 line = []
 
@@ -9,6 +9,16 @@ for ef in range(len(f)):
     line.append(float(f[ef].split(",")[2]))
 
 
+factor_power = line[0]
+n_thermal = line[1]
+fuel_LHV = line[2] # Energy per unit mass for battery also?
+n_primary = line[3]
+n_final = line[4]
+n_gearbox = line[5] # replace with one efficiency factor?
+ratio_primary = line[6]
+ratio_final = line[7]
+ratio_gearbox = line[8] # replace with one ratio?
+nog = 1
 
 
 f = open("aero.csv", "r")
@@ -78,3 +88,8 @@ br_pist_a = math.pow(br_nop*math.pi*(br_pist_d/1000), 2)/4
 br_mast_a = math.pow(math.pi*(br_mast_d/1000), 2)/4
 beta = tyre_radius/(br_disc_d/2 - br_pad_h/2)/br_pist_a/br_pad_mu/4
 phi = br_mast_a/br_ped_r*2
+
+a = (1 - df) * L
+b = -df * L
+C = [[2*CF, 2*(CF+CR)], [2*CF*a, 2*(CF*a + CR*b)]]
+
