@@ -93,3 +93,18 @@ a = (1 - df) * L
 b = -df * L
 C = [[2*CF, 2*(CF+CR)], [2*CF*a, 2*(CF*a + CR*b)]]
 
+
+f = open("torque_speed_curve.csv", "r")
+f = f.readlines()
+speed = []
+torque = []
+
+for ef in range(len(f)):
+    speed.append(float(f[ef].split(",")[0]))
+    torque.append(float(f[ef].split(",")[1]))
+
+power = [torque[i] * speed[i] * 2 * math.pi / 60 for i in range(len(speed))]
+
+wheel_speed_gear = [speed[i] /ratio_primary/ratio_gearbox/ratio_final for i in range(len(speed))]
+vehicle_speed_gear = []
+vehicle_torque_gear = []
