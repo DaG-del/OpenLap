@@ -1,5 +1,5 @@
 import math
-
+import helper_lib
 
 f = open("motor.csv", "r")
 f = f.readlines()
@@ -18,6 +18,9 @@ n_gearbox = line[5] # replace with one efficiency factor?
 ratio_primary = line[6]
 ratio_final = line[7]
 ratio_gearbox = line[8] # replace with one ratio?
+max_power = line[9]
+max_torque = line[10]
+max_rpm = line[11]
 nog = 1
 
 
@@ -94,17 +97,5 @@ b = -df * L
 C = [[2*CF, 2*(CF+CR)], [2*CF*a, 2*(CF*a + CR*b)]]
 
 
-f = open("torque_speed_curve.csv", "r")
-f = f.readlines()
-speed = []
-torque = []
 
-for ef in range(len(f)):
-    speed.append(float(f[ef].split(",")[0]))
-    torque.append(float(f[ef].split(",")[1]))
-
-power = [torque[i] * speed[i] * 2 * math.pi / 60 for i in range(len(speed))]
-
-wheel_speed_gear = [speed[i] /ratio_primary/ratio_gearbox/ratio_final for i in range(len(speed))]
-vehicle_speed_gear = []
-vehicle_torque_gear = []
+[torque, speed] = helper_lib.tsc(max_power, max_torque, max_rpm)

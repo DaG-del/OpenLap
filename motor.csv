@@ -6,4 +6,7 @@ Engine,Power Factor Multiplier,1
 ,Gearbox Efficiency,0.98
 ,Primary Gear Reduction,1
 ,Final Gear Reduction,1
-,1st Gear Ratio,2.57
+,1st Gear Ratio,6
+,Maximum power,38
+,Maximum torque,58
+,Maximum RPM, 6600
