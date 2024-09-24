@@ -1,17 +1,43 @@
 import math
 
 
-f = open("tires.csv", "r")
+f = open("aero.csv", "r")
 f = f.readlines()
 line = []
 
 for ef in range(len(f)):
-    line.append(f[ef].split(",")[2])
+    line.append(float(f[ef].split(",")[2]))
 
-M = float(line[0].split(",")[2])
-df = float(line[1].split(",")[2])
-L = float(line[2].split(",")[2])
-rack = float(line[3].split(",")[2])
+
+
+
+f = open("aero.csv", "r")
+f = f.readlines()
+line = []
+
+for ef in range(len(f)):
+    line.append(float(f[ef].split(",")[2]))
+
+Cl = line[0]
+Cd = line[1]
+factor_Cl = line[2]
+factor_Cd = line[3]
+da = line[4]/100
+A = line[5]
+rho = line[6]
+
+
+f = open("mass_dimensions.csv", "r")
+f = f.readlines()
+line = []
+
+for ef in range(len(f)):
+    line.append(float(f[ef].split(",")[2]))
+
+M = line[0]
+df = line[1]/100
+L = line[2]/1000
+rack = line[3]
 
 
 f = open("tires.csv", "r")
