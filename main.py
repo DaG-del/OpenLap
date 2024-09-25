@@ -20,7 +20,7 @@ n_gearbox = line[5] # replace with one efficiency factor?
 ratio_primary = line[6]
 ratio_final = line[7]
 ratio_gearbox = line[8] # replace with one ratio?
-max_power = line[9]
+max_power = line[9]*1000
 max_torque = line[10]
 max_rpm = line[11]
 nog = 1
@@ -98,8 +98,11 @@ a = (1 - df) * L
 b = -df * L
 C = [[2*CF, 2*(CF+CR)], [2*CF*a, 2*(CF*a + CR*b)]]
 
-
-
 [torque, speed] = helper_lib.tsc(max_power, max_torque, max_rpm)
 mlt.plot(speed, torque)
-mlt.show()
+#mlt.show()
+
+f = open("curve.csv", "w")
+f = open("curve.csv", "a")
+for i in range(len(speed)):
+    f.write(str(speed[i]) + "," + str(torque[i]) + "\n")
