@@ -106,4 +106,3 @@ f = open("curve.csv", "w")
 f = open("curve.csv", "a")
 for i in range(len(speed)):
     f.write(str(speed[i]) + "," + str(torque[i]) + "\n")
-
