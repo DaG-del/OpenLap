@@ -106,3 +106,22 @@ f = open("curve.csv", "w")
 f = open("curve.csv", "a")
 for i in range(len(speed)):
     f.write(str(speed[i]) + "," + str(torque[i]) + "\n")
+
+power = []
+wheel_speed_gear = []
+vehicle_speed_gear = []
+wheel_torque_gear = []
+for s in range(len(speed)):
+    power.append(torque[s] * speed[s] * 2 * math.pi/60)
+    wheel_speed_gear.append(speed[s]/ratio_primary/ratio_gearbox/ratio_final)
+    vehicle_speed_gear.append(wheel_speed_gear[s]*2*math.pi/60*tyre_radius)
+    wheel_torque_gear.append(torque[s]*ratio_primary*n_primary*ratio_gearbox*n_gearbox*ratio_final*n_final)
+
+
+v_min = min(vehicle_speed_gear)
+v_max = max(vehicle_speed_gear)
+
+dv = 0.5/3.6
+vehicle_speed = helper_lib.linspace(v_min, v_max, dv)
+
+print("debug")
