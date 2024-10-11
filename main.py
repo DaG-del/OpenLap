@@ -208,6 +208,7 @@ if v[-1] != v_max:
 
 N = 45
 GGV = numpy.zeros((len(v), 2*N-1, 3))
+fx_engine_time_factor_power = [fx_engine[i] * factor_power for i in range(len(fx_engine))]
 
 for i in range(len(v)):
     Aero_Df = 0.5 * rho * factor_Cl * Cl * A * v[i]**2
@@ -218,14 +219,14 @@ for i in range(len(v)):
     ay_max = (1 / M) * (muy + dmy * (Ny - (Wz - Aero_Df) / 4)) * (Wz - Aero_Df)
     ax_tyre_max_acc = (1 / M) * (mux + dmx * (Nx - Wd)) * Wd * driven_wheels
     ax_tyre_max_dec = -(1 / M) * (mux + dmx * (Nx - (Wz - Aero_Df) / 4)) * (Wz - Aero_Df)
-    interp_fx_engine = interp1d(vehicle_speed, factor_power * fx_engine, fill_value="extrapolate")
+    interp_fx_engine = interp1d(vehicle_speed, fx_engine_time_factor_power, fill_value="extrapolate")
     ax_power_limit = (1 / M) * interp_fx_engine(v[i])
     ax_power_limit = ax_power_limit * numpy.ones(N)
     ay = ay_max * numpy.cos(numpy.radians(numpy.linspace(0, 180, N)))
     ax_tyre_acc = ax_tyre_max_acc * numpy.sqrt(1 - (ay / ay_max) ** 2)
     ax_acc = numpy.minimum(ax_tyre_acc, ax_power_limit) + ax_drag
     ax_dec = ax_tyre_max_dec * numpy.sqrt(1 - (ay / ay_max) ** 2) + ax_drag  # Friction ellipse
-    GGV[i, :, 1] = numpy.concatenate([ax_acc, ax_dec[1:]])
-    GGV[i, :, 2] = numpy.concatenate([ay, numpy.flipud(ay[1:])])
-    GGV[i, :, 3] = v[i] * numpy.ones(2 * N - 1)
+    GGV[i, :, 0] = numpy.concatenate([ax_acc, ax_dec[1:]])
+    GGV[i, :, 1] = numpy.concatenate([ay, numpy.flipud(ay[1:])])
+    GGV[i, :, 2] = v[i] * numpy.ones(2 * N - 1)
 print("debug")
