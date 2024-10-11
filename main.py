@@ -1,6 +1,7 @@
 import math
 import helper_lib
 import matplotlib.pyplot as mlt
+import numpy
 
 
 f = open("motor.csv", "r")
@@ -122,6 +123,21 @@ v_min = min(vehicle_speed_gear)
 v_max = max(vehicle_speed_gear)
 
 dv = 0.5/3.6
-vehicle_speed = helper_lib.linspace(v_min, v_max, dv)
+vehicle_speed: list = numpy.linspace(v_min, v_max, math.floor((v_max-v_min)/dv)).tolist()
+
+temp = []
+for wtg in wheel_torque_gear:
+    temp.append(wtg/tyre_radius)
+fx_engine = []
+gear = []
+for i in range(len(vehicle_speed)):
+    fx_engine.append(numpy.interp(vehicle_speed[i], vehicle_speed_gear, temp))
+    gear.append(1)
+
+vehicle_speed = [0] + vehicle_speed
+gear.append(1)
+fx_engine = fx_engine[0] + fx_engine
+
+
 
 print("debug")
