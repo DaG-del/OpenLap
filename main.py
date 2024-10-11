@@ -136,8 +136,53 @@ for i in range(len(vehicle_speed)):
 
 vehicle_speed = [0] + vehicle_speed
 gear.append(1)
-fx_engine = fx_engine[0] + fx_engine
+temp = [fx_engine[0]]
+temp.extend(fx_engine)
+fx_engine = temp
 
+engine_speed = []
+for vs in vehicle_speed:
+    engine_speed.append(ratio_final * ratio_gearbox * ratio_primary * vs / tyre_radius * 60 / 2 / math.pi)
 
+wheel_torque = []
+for fe in fx_engine:
+    wheel_torque.append(fe*tyre_radius)
+
+engine_torque = []
+for wt in wheel_torque:
+    engine_torque.append(wt / ratio_final / ratio_gearbox / ratio_primary / n_primary / n_gearbox / n_final)
+
+# engine_power = engine_torque.*engine_speed*2*pi/60;
+engine_power = []
+for x in range(len(engine_torque)):
+    engine_power.append(engine_torque[x] * engine_speed[x] * 2 * math.pi / 60)
+
+g = 9.81
+factor_drive = (1-df)
+factor_aero = (1-da)
+driven_wheels = 2
+
+fz_mass = -M*g
+fz_aero = []
+fz_total = []
+for vs in vehicle_speed:
+    fz_aero.append(1/2*rho*factor_Cl*Cl*A*vs*vs)
+    fz_total.append(1/2*rho*factor_Cl*Cl*A*vs*vs + fz_mass)
+
+fz_tyre = []
+for fa in fz_aero:
+    fz_tyre.append((factor_drive*fz_mass+factor_aero*fa)/driven_wheels)
+
+fx_aero = []
+for vs in vehicle_speed:
+    fx_aero.append(1/2*rho*factor_Cd*Cd*A*vs*vs)
+
+fx_roll = []
+for ft in fz_total:
+    fx_roll.append(Cr * abs(ft))
+
+fx_tyre = []
+for ft in fz_tyre:
+    fx_tyre.append(driven_wheels*(mu_x+sens_x*(mu_x_M*g-abs(ft)))*abs(ft))
 
 print("debug")
