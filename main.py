@@ -553,7 +553,7 @@ def vehicle_model_lat(veh, tr, i):
             # Needed lateral acceleration to make the turn
             ay_needed = v ** 2 / r + g * numpy.sin(numpy.radians(bank))
 
-            # Calculating driver inputs
+            # Calculating driver inumpyuts
             if ax_drag <= 0:  # Need throttle to compensate for drag
                 ax_tyre_max_acc = (1 / M) * (mux + dmx * (Nx - Wd)) * Wd * driven_wheels
                 ax_power_limit = (1 / M) * interp1d(veh['vehicle_speed'], veh['factor_power'] * veh['fx_engine'])(v)
@@ -564,7 +564,7 @@ def vehicle_model_lat(veh, tr, i):
                 # Available combined longitudinal acceleration at ay_needed
                 ax_acc = ax_tyre_max_acc * numpy.sqrt(1 - (ay_needed / ay_max) ** 2)
 
-                # Throttle input (tps)
+                # Throttle inumpyut (tps)
                 scale = min([-ax_drag, ax_acc]) / ax_power_limit
                 tps = max(min(1, scale), 0)
                 bps = 0  # No brake pressure
@@ -577,7 +577,7 @@ def vehicle_model_lat(veh, tr, i):
                 # Available combined longitudinal deceleration at ay_needed
                 ax_dec = ax_tyre_max_dec * numpy.sqrt(1 - (ay_needed / ay_max) ** 2)
 
-                # Brake input (bps)
+                # Brake inumpyut (bps)
                 fx_tyre = max([ax_drag, -ax_dec]) * M
                 bps = max([fx_tyre, 0]) * veh['beta']
                 tps = 0  # No throttle
@@ -590,14 +590,43 @@ def vehicle_model_lat(veh, tr, i):
 
     return v, tps, bps
 
+def other_points(i, i_max):
+    i_rest = numpy.arange(1, i_max + 1)
+    i_rest = numpy.delete(i_rest, i - 1)  # Remove the i-th element (adjusting for 0-based index)
+    return i_rest
 
-def other_points(i, N):
-    pass
+def next_point(j, j_max, mode, tr_config):
+    if mode == 1:  # Acceleration
+        if tr_config == 'Closed':
+            if j == j_max - 1:
+                j = j_max
+                j_next = 1
+            elif j == j_max:
+                j = 1
+                j_next = j + 1
+            else:
+                j = j + 1
+                j_next = j + 1
+        elif tr_config == 'Open':
+            j = j + 1
+            j_next = j + 1
 
+    elif mode == -1:  # Deceleration
+        if tr_config == 'Closed':
+            if j == 2:
+                j = 1
+                j_next = j_max
+            elif j == 1:
+                j = j_max
+                j_next = j - 1
+            else:
+                j = j - 1
+                j_next = j - 1
+        elif tr_config == 'Open':
+            j = j - 1
+            j_next = j - 1
 
-def next_point(j, n, mode, param):
-    pass
-
+    return j_next, j
 
 def vehicle_model_comb(veh, tr, v, v_max_next, j, mode):
     overshoot = False  # assuming no overshoot initially
@@ -704,10 +733,20 @@ def vehicle_model_comb(veh, tr, v, v_max_next, j, mode):
 
     return v_next, ax, ay, tps, bps, overshoot
 
-
 def flag_update(flag, j, k, prg_size, logid, prg_pos):
-    pass
+    """
+    Updates the flag matrix and checks if the progress bar needs updating.
+    """
+    # Current flag state
+    p = numpy.sum(flag) / (flag.shape[0] * flag.shape[1])  # Calculate percentage of flags set to True
+    n_old = int(p * prg_size)  # Old number of progress steps
 
+    # New flag state
+    flag[j, k] = True  # Update the flag at position (j, k)
+    p = numpy.sum(flag) / (flag.shape[0] * flag.shape[1])  # Recalculate percentage after update
+    n = int(p * prg_size)  # New number of progress steps
+
+    return flag
 
 def simulate(veh, tr, logid):
     v_max = numpy.zeros(tr.n, dtype=numpy.float32)
