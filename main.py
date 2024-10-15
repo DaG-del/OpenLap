@@ -475,3 +475,36 @@ for i in range(len(v)):
 ######################################################################################################
 ######################################################################################################
 
+def vehicle_model_lat(veh, tr, i):
+    pass
+
+
+def simulate(veh, tr):
+    v_max = numpy.zeros(tr.n, dtype=numpy.float32)
+    bps_v_max = numpy.zeros(tr.n, dtype=numpy.float32)
+    tps_v_max = numpy.zeros(tr.n, dtype=numpy.float32)
+    for i in range(tr.n):
+        v_max[i], tps_v_max[i], bps_v_max[i] = vehicle_model_lat(veh, tr, i)
+
+    v_apex, apex = findpeaks(-v_max)
+    v_apex = -v_apex
+    # setting up standing start for open track configuration
+    if tr.info['config'] == 'Open':
+        if apex[0] != 0:
+            apex = numpy.insert(apex, 0, 0)
+            v_apex = numpy.insert(v_apex, 0, 0)
+        else:
+            v_apex[0] = 0
+
+    if len(apex) == 0:
+        v_apex, apex = numpy.min(v_max), numpy.argmin(v_max)
+
+    apex_table = numpy.column_stack((v_apex, apex))
+    apex_table = apex_table[numpy.argsort(apex_table[:, 0])]
+    v_apex = apex_table[:, 0]
+    apex = apex_table[:, 1].astype(int)
+
+    tps_apex = tps_v_max[apex]
+    bps_apex = bps_v_max[apex]
+
+    
