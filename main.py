@@ -477,7 +477,118 @@ for i in range(len(v)):
 ######################################################################################################
 
 def vehicle_model_lat(veh, tr, i):
-    pass
+    g = 9.81
+    r = tr['r'][p]
+    incl = tr['incl'][p]
+    bank = tr['bank'][p]
+    factor_grip = tr['factor_grip'][p] * veh['factor_grip']
+
+    factor_drive = veh['factor_drive']
+    factor_aero = veh['factor_aero']
+    driven_wheels = veh['driven_wheels']
+
+    M = veh['M']
+    Wz = M * g * numpy.cos(numpy.radians(bank)) * numpy.cos(numpy.radians(incl))  # Normal load on all wheels
+    Wy = -M * g * numpy.sin(numpy.radians(bank))  # Induced weight from banking
+    Wx = M * g * numpy.sin(numpy.radians(incl))  # Induced weight from inclination
+
+    # Speed solution
+    if r == 0:  # Straight road (limited by engine speed limit or drag)
+        v = veh['v_max']
+        tps = 1  # Full throttle
+        bps = 0  # No brake
+    else:  # Cornering (may be limited by engine, drag, or cornering ability)
+        # Initial speed solution
+        D = -0.5 * veh['rho'] * veh['factor_Cl'] * veh['Cl'] * veh['A']  # Downforce coefficient
+        dmy = factor_grip * veh['sens_y']
+        muy = factor_grip * veh['mu_y']
+        Ny = veh['mu_y_M'] * g
+
+        dmx = factor_grip * veh['sens_x']
+        mux = factor_grip * veh['mu_x']
+        Nx = veh['mu_x_M'] * g
+
+        # Polynomial coefficients for quadratic equation a*x^2 + b*x + c = 0
+        a = -numpy.sign(r) * dmy / 4 * D ** 2
+        b = numpy.sign(r) * (muy * D + (dmy / 4) * (Ny * 4) * D - 2 * (dmy / 4) * Wz * D) - M * r
+        c = numpy.sign(r) * (muy * Wz + (dmy / 4) * (Ny * 4) * Wz - (dmy / 4) * Wz ** 2) + Wy
+
+        # Solving the quadratic equation
+        if a == 0:
+            v = numpy.sqrt(-c / b)
+        elif b ** 2 - 4 * a * c >= 0:
+            root1 = (-b + numpy.sqrt(b ** 2 - 4 * a * c)) / (2 * a)
+            root2 = (-b - numpy.sqrt(b ** 2 - 4 * a * c)) / (2 * a)
+            if root1 >= 0:
+                v = numpy.sqrt(root1)
+            elif root2 >= 0:
+                v = numpy.sqrt(root2)
+            else:
+                raise ValueError(f'No real roots at point index: {p}')
+        else:
+            raise ValueError(f'Discriminant < 0 at point index: {p}')
+
+        # Checking for engine speed limit
+        v = min(v, veh['v_max'])
+
+        # Adjusting speed for drag force compensation
+        adjust_speed = True
+        while adjust_speed:
+            # Aero forces
+            Aero_Df = 0.5 * veh['rho'] * veh['factor_Cl'] * veh['Cl'] * veh['A'] * v ** 2
+            Aero_Dr = 0.5 * veh['rho'] * veh['factor_Cd'] * veh['Cd'] * veh['A'] * v ** 2
+
+            # Rolling resistance
+            Roll_Dr = veh['Cr'] * (-Aero_Df + Wz)
+
+            # Normal load on driven wheels
+            Wd = (factor_drive * Wz + (-factor_aero * Aero_Df)) / driven_wheels
+
+            # Drag acceleration
+            ax_drag = (Aero_Dr + Roll_Dr + Wx) / M
+
+            # Maximum lateral acceleration available from tyres
+            ay_max = numpy.sign(r) / M * (muy + dmy * (Ny - (Wz - Aero_Df) / 4)) * (Wz - Aero_Df)
+
+            # Needed lateral acceleration to make the turn
+            ay_needed = v ** 2 / r + g * numpy.sin(numpy.radians(bank))
+
+            # Calculating driver inputs
+            if ax_drag <= 0:  # Need throttle to compensate for drag
+                ax_tyre_max_acc = (1 / M) * (mux + dmx * (Nx - Wd)) * Wd * driven_wheels
+                ax_power_limit = (1 / M) * interp1d(veh['vehicle_speed'], veh['factor_power'] * veh['fx_engine'])(v)
+
+                # Available combined lateral acceleration when ax_net == 0
+                ay = ay_max * numpy.sqrt(1 - (ax_drag / ax_tyre_max_acc) ** 2)
+
+                # Available combined longitudinal acceleration at ay_needed
+                ax_acc = ax_tyre_max_acc * numpy.sqrt(1 - (ay_needed / ay_max) ** 2)
+
+                # Throttle input (tps)
+                scale = min([-ax_drag, ax_acc]) / ax_power_limit
+                tps = max(min(1, scale), 0)
+                bps = 0  # No brake pressure
+            else:  # Need brake to compensate for drag
+                ax_tyre_max_dec = -(1 / M) * (mux + dmx * (Nx - (Wz - Aero_Df) / 4)) * (Wz - Aero_Df)
+
+                # Available combined lateral acceleration when ax_net == 0
+                ay = ay_max * numpy.sqrt(1 - (ax_drag / ax_tyre_max_dec) ** 2)
+
+                # Available combined longitudinal deceleration at ay_needed
+                ax_dec = ax_tyre_max_dec * numpy.sqrt(1 - (ay_needed / ay_max) ** 2)
+
+                # Brake input (bps)
+                fx_tyre = max([ax_drag, -ax_dec]) * M
+                bps = max([fx_tyre, 0]) * veh['beta']
+                tps = 0  # No throttle
+
+            # Check if tyres can produce the available combined lateral acceleration
+            if ay / ay_needed < 1:  # Not enough grip
+                v = numpy.sqrt((ay - g * numpy.sin(numpy.radians(bank))) / r) - 1E-3  # Adjust speed for convergence
+            else:  # Enough grip
+                adjust_speed = False
+
+    return v, tps, bps
 
 
 def other_points(i, N):
@@ -488,8 +599,110 @@ def next_point(j, n, mode, param):
     pass
 
 
-def vehicle_model_comb(veh, tr, param, param1, j, mode):
-    pass
+def vehicle_model_comb(veh, tr, v, v_max_next, j, mode):
+    overshoot = False  # assuming no overshoot initially
+
+    # Getting track data
+    dx = tr['dx'][j]
+    r = tr['r'][j]
+    incl = tr['incl'][j]
+    bank = tr['bank'][j]
+    factor_grip = tr['factor_grip'][j] * veh['factor_grip']
+    g = 9.81
+
+    # Getting vehicle data
+    if mode == 1:
+        factor_drive = veh['factor_drive']
+        factor_aero = veh['factor_aero']
+        driven_wheels = veh['driven_wheels']
+    else:
+        factor_drive = 1
+        factor_aero = 1
+        driven_wheels = 4
+
+    # External forces
+    M = veh['M']
+    Wz = M * g * numpy.cos(numpy.radians(bank)) * numpy.cos(numpy.radians(incl))  # normal load on all wheels
+    Wy = -M * g * numpy.sin(numpy.radians(bank))  # induced weight from banking
+    Wx = M * g * numpy.sin(numpy.radians(incl))  # induced weight from inclination
+
+    Aero_Df = 0.5 * veh['rho'] * veh['factor_Cl'] * veh['Cl'] * veh['A'] * v ** 2  # downforce
+    Aero_Dr = 0.5 * veh['rho'] * veh['factor_Cd'] * veh['Cd'] * veh['A'] * v ** 2  # drag force
+    Roll_Dr = veh['Cr'] * (-Aero_Df + Wz)  # rolling resistance
+    Wd = (factor_drive * Wz + (-factor_aero * Aero_Df)) / driven_wheels  # normal load on driven wheels
+
+    # Overshoot acceleration
+    ax_max = mode * (v_max_next ** 2 - v ** 2) / (
+                2 * dx)  # maximum allowed longitudinal acceleration to avoid overshoot
+    ax_drag = (Aero_Dr + Roll_Dr + Wx) / M  # drag acceleration
+    ax_needed = ax_max - ax_drag  # required acceleration to avoid overshoot
+
+    # Current lateral acceleration
+    ay = v ** 2 / r + g * numpy.sin(numpy.radians(bank))
+
+    # Tyre forces
+    dmy = factor_grip * veh['sens_y']
+    muy = factor_grip * veh['mu_y']
+    Ny = veh['mu_y_M'] * g
+
+    dmx = factor_grip * veh['sens_x']
+    mux = factor_grip * veh['mu_x']
+    Nx = veh['mu_x_M'] * g
+
+    # Friction ellipse multiplier
+    if numpy.sign(ay) != 0:  # In corner or compensating for banking
+        ay_max = 1 / M * (numpy.sign(ay) * (muy + dmy * (Ny - (Wz - Aero_Df) / 4)) * (Wz - Aero_Df) + Wy)
+        if abs(ay / ay_max) > 1:  # Checking if vehicle overshot
+            ellipse_multi = 0  # Overshot condition
+        else:
+            ellipse_multi = numpy.sqrt(1 - (ay / ay_max) ** 2)  # Friction ellipse
+    else:  # In straight or no compensation needed
+        ellipse_multi = 1
+
+    # Calculating driver inumpyuts
+    if ax_needed >= 0:  # Throttle required
+        ax_tyre_max = 1 / M * (mux + dmx * (Nx - Wd)) * Wd * driven_wheels  # Max pure longitudinal acceleration
+        ax_tyre = ax_tyre_max * ellipse_multi  # Max combined longitudinal acceleration
+
+        # Engine power limit
+        fx_engine_interp = interp1d(veh['vehicle_speed'], veh['factor_power'] * veh['fx_engine'],
+                                    fill_value="extrapolate")
+        ax_power_limit = 1 / M * fx_engine_interp(v)
+
+        # Throttle position
+        scale = min([ax_tyre, ax_needed] / ax_power_limit)
+        tps = max(min(1, scale), 0)  # Making sure it's between 0 and 1
+        bps = 0  # No braking
+        ax_com = tps * ax_power_limit  # Final longitudinal acceleration command
+    else:  # Braking required
+        ax_tyre_max = -1 / M * (mux + dmx * (Nx - (Wz - Aero_Df) / 4)) * (
+                    Wz - Aero_Df)  # Max pure longitudinal deceleration
+        ax_tyre = ax_tyre_max * ellipse_multi  # Max combined longitudinal deceleration
+
+        fx_tyre = min(-[ax_tyre, ax_needed]) * M  # Tyre braking force
+        bps = max(fx_tyre, 0) * veh['beta']  # Brake pressure
+        tps = 0  # No throttle
+        ax_com = -min(-[ax_tyre, ax_needed])  # Final longitudinal deceleration command
+
+    # Final results
+    ax = ax_com + ax_drag  # Total longitudinal acceleration
+    v_next = numpy.sqrt(v ** 2 + 2 * mode * ax * dx)  # Next speed value
+
+    # Correcting throttle for full throttle when at v_max on straights
+    if tps > 0 and v / veh['v_max'] >= 0.999:
+        tps = 1
+
+    # Checking for overshoot
+    if v_next / v_max_next > 1:
+        overshoot = True
+        v_next = numpy.inf  # Reset speed for overshoot
+        ax = 0
+        ay = 0
+        tps = -1  # Special value for throttle
+        bps = -1  # Special value for brake
+        return v_next, ax, ay, tps, bps, overshoot
+
+    return v_next, ax, ay, tps, bps, overshoot
 
 
 def flag_update(flag, j, k, prg_size, logid, prg_pos):
