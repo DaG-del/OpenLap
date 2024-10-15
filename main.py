@@ -1,7 +1,8 @@
+import logging
 import math
 
 import scipy
-
+import scipy.interpolate as interp
 import helper_lib
 import matplotlib.pyplot as mlt
 import numpy
@@ -479,14 +480,30 @@ def vehicle_model_lat(veh, tr, i):
     pass
 
 
-def simulate(veh, tr):
+def other_points(i, N):
+    pass
+
+
+def next_point(j, n, mode, param):
+    pass
+
+
+def vehicle_model_comb(veh, tr, param, param1, j, mode):
+    pass
+
+
+def flag_update(flag, j, k, prg_size, logid, prg_pos):
+    pass
+
+
+def simulate(veh, tr, logid):
     v_max = numpy.zeros(tr.n, dtype=numpy.float32)
     bps_v_max = numpy.zeros(tr.n, dtype=numpy.float32)
     tps_v_max = numpy.zeros(tr.n, dtype=numpy.float32)
     for i in range(tr.n):
         v_max[i], tps_v_max[i], bps_v_max[i] = vehicle_model_lat(veh, tr, i)
 
-    v_apex, apex = findpeaks(-v_max)
+    v_apex, apex = scipy.findpeaks(-v_max)
     v_apex = -v_apex
     # setting up standing start for open track configuration
     if tr.info['config'] == 'Open':
@@ -507,4 +524,112 @@ def simulate(veh, tr):
     tps_apex = tps_v_max[apex]
     bps_apex = bps_v_max[apex]
 
+    N = len(apex)
+    flag = numpy.zeros((tr.n, 2), dtype=bool)
+    v = numpy.full((tr.n, N, 2), numpy.inf, dtype=numpy.float32)
+    ax = numpy.zeros((tr.n, N, 2), dtype=numpy.float32)
+    ay = numpy.zeros((tr.n, N, 2), dtype=numpy.float32)
+    tps = numpy.zeros((tr.n, N, 2), dtype=numpy.float32)
+    bps = numpy.zeros((tr.n, N, 2), dtype=numpy.float32)
+
+    prg_size = 30
+    prg_pos = 0
+
+    for i in range(N):
+        for k in range(1, 3):
+            mode = 1 if k == 1 else -1
+            k_rest = 2 if k == 1 else 1
+            if not (tr.info['config'] == 'Open' and mode == -1 and i == 0):
+                i_rest = other_points(i, N)
+                if i_rest is None:
+                    i_rest = i
+
+                j = apex[i]
+                v[j, i, k - 1] = v_apex[i]
+                ay[j, i, k - 1] = v_apex[i] ** 2 * tr.r[j]
+                tps[j, :, 0] = tps_apex[i]
+                bps[j, :, 0] = bps_apex[i]
+                tps[j, :, 1] = tps_apex[i]
+                bps[j, :, 1] = bps_apex[i]
+                flag[j, k - 1] = True
+
+                _, j_next = next_point(j, tr.n, mode, tr.info['config'])
+                if not (tr.info['config'] == 'Open' and mode == 1 and i == 0):
+                    v[j_next, i, k - 1] = v[j, i, k - 1]
+                    j_next, j = next_point(j, tr.n, mode, tr.info['config'])
+
+                while True:
+                    logging.info(f"{i}\t{j}\t{k}\t{tr.x[j]}\t{v[j, i, k - 1]}\t{v_max[j]}")
+                    v[j_next, i, k - 1], ax[j, i, k - 1], ay[j, i, k - 1], tps[j, i, k - 1], bps[
+                        j, i, k - 1], overshoot = vehicle_model_comb(veh, tr, v[j, i, k - 1], v_max[j_next], j, mode)
+
+                    if overshoot:
+                        break
+
+                    if flag[j, k - 1] or flag[j, k_rest - 1]:
+                        if max(v[j_next, i, k - 1] >= v[j_next, i_rest, k - 1]) or max(
+                                v[j_next, i, k - 1] > v[j_next, i_rest, k_rest - 1]):
+                            break
+
+                    flag = flag_update(flag, j, k, prg_size, logid, prg_pos)
+                    j_next, j = next_point(j, tr.n, mode, tr.info['config'])
+
+                    if tr.info['config'] == 'Closed':
+                        if j == apex[i]:
+                            break
+                    elif tr.info['config'] == 'Open':
+                        if j == tr.n or j == 0:
+                            break
+
+    V, AX, AY, TPS, BPS = numpy.zeros(tr.n), numpy.zeros(tr.n), numpy.zeros(tr.n), numpy.zeros(tr.n), numpy.zeros(tr.n)
+    for i in range(tr.n):
+        IDX = len(v[i, :, 0])
+        V[i], idx = min([v[i, :, 0], v[i, :, 1]])
+        if idx < IDX:
+            AX[i] = ax[i, idx, 0]
+            AY[i] = ay[i, idx, 0]
+            TPS[i] = tps[i, idx, 0]
+            BPS[i] = bps[i, idx, 0]
+        else:
+            AX[i] = ax[i, idx - IDX, 1]
+            AY[i] = ay[i, idx - IDX, 1]
+            TPS[i] = tps[i, idx - IDX, 1]
+            BPS[i] = bps[i, idx - IDX, 1]
+
+    if tr.info['config'] == 'Open':
+        time = numpy.cumsum([tr.dx[1] / V[1]] + list(tr.dx[1:] / V[1:]))
+    else:
+        time = numpy.cumsum(tr.dx / V)
+
+    sector_time = numpy.zeros(numpy.max(tr.sector))
+    for i in range(1, numpy.max(tr.sector) + 1):
+        sector_time[i - 1] = numpy.max(time[tr.sector == i]) - numpy.min(time[tr.sector == i])
+
+    laptime = time[-1]
+
+    M = veh.M
+    g = 9.81
+    A = numpy.sqrt(AX ** 2 + AY ** 2)
+    Fz_mass = -M * g * numpy.cos(numpy.radians(tr.bank)) * numpy.cos(numpy.radians(tr.incl))
+    Fz_aero = 0.5 * veh.rho * veh.factor_Cl * veh.Cl * veh.A * V ** 2
+    Fz_total = Fz_mass + Fz_aero
+    Fx_aero = 0.5 * veh.rho * veh.factor_Cd * veh.Cd * veh.A * V ** 2
+    Fx_roll = veh.Cr * numpy.abs(Fz_total)
+
+    yaw_rate = V * tr.r
+    delta = numpy.zeros(tr.n)
+    beta = numpy.zeros(tr.n)
+    for i in range(tr.n):
+        B = numpy.array([M * V[i] ** 2 * tr.r[i] + M * g * numpy.sin(numpy.radians(tr.bank[i])), 0])
+        sol = numpy.linalg.solve(veh.C, B)
+        delta[i] = sol[0] + numpy.degrees(numpy.arctan(veh.L * tr.r[i]))
+        beta[i] = sol[1]
+
+    steer = delta * veh.rack
+
+    wheel_torque = TPS * interp.interp1d(veh.enginerpm_axis, veh.enginetorque_axis)(V / veh.Re)
+    P_loss = TPS * (interp.interp1d(veh.enginerpm_axis, veh.enginefr_axis)(V / veh.Re) + Fx_aero + Fx_roll)
+    Power = P_loss + (TPS * wheel_torque * V / veh.Re)
+
+    return laptime, sector_time, V, AX, AY, yaw_rate, steer, beta, wheel_torque, Power
     
