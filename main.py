@@ -121,24 +121,6 @@ R = R_injected
 l = l_injected
 type = type_injected
 
-'''
-for i=1:length(l)-1
-    j = 1 ;
-    while true
-        if type(i+j)==0 && type(i)==0 && l(i)~=-1
-            l(i) = l(i)+l(i+j) ;
-            l(i+j) = -1 ;
-        else
-            break
-        end
-        j = j+1 ;
-    end
-end
-R(l==-1) = [] ;
-type(l==-1) = [] ;
-l(l==-1) = [] ;
-'''
-
 for i in range(len(l) - 1):
     j = 1
     while True:
@@ -614,35 +596,33 @@ def next_point(j, j_max, mode, tr_config):
 
     return j_next, j
 
-def vehicle_model_comb(veh, tr, v, v_max_next, j, mode, dx, r):
+def vehicle_model_comb(veh, tr, v, v_max_next, j, mode, dx, r, factor_drive_ip=None, factor_aero_ip=None,
+                       driven_wheels_ip=None):
 
     overshoot = False  # assuming no overshoot initially
 
     # Getting track data
     dx = dx[j]
     r = r[j]
-    factor_grip = factor_grip[j] * veh['factor_grip']
-    g = 9.81
 
     # Getting vehicle data
     if mode == 1:
-        factor_drive = veh['factor_drive']
-        factor_aero = veh['factor_aero']
-        driven_wheels = veh['driven_wheels']
+        factor_drive = factor_drive_ip
+        factor_aero = factor_aero_ip
+        driven_wheels = driven_wheels_ip
     else:
         factor_drive = 1
         factor_aero = 1
         driven_wheels = 4
 
     # External forces
-    M = veh['M']
     Wz = M * g * numpy.cos(numpy.radians(bank)) * numpy.cos(numpy.radians(incl))  # normal load on all wheels
     Wy = -M * g * numpy.sin(numpy.radians(bank))  # induced weight from banking
     Wx = M * g * numpy.sin(numpy.radians(incl))  # induced weight from inclination
 
-    Aero_Df = 0.5 * veh['rho'] * veh['factor_Cl'] * veh['Cl'] * veh['A'] * v ** 2  # downforce
-    Aero_Dr = 0.5 * veh['rho'] * veh['factor_Cd'] * veh['Cd'] * veh['A'] * v ** 2  # drag force
-    Roll_Dr = veh['Cr'] * (-Aero_Df + Wz)  # rolling resistance
+    Aero_Df = 0.5 * rho * factor_Cl * Cl * A * v ** 2  # downforce
+    Aero_Dr = 0.5 * rho * factor_Cd * Cd * A * v ** 2  # drag force
+    Roll_Dr = Cr * (-Aero_Df + Wz)  # rolling resistance
     Wd = (factor_drive * Wz + (-factor_aero * Aero_Df)) / driven_wheels  # normal load on driven wheels
 
     # Overshoot acceleration
@@ -655,13 +635,13 @@ def vehicle_model_comb(veh, tr, v, v_max_next, j, mode, dx, r):
     ay = v ** 2 / r + g * numpy.sin(numpy.radians(bank))
 
     # Tyre forces
-    dmy = factor_grip * veh['sens_y']
-    muy = factor_grip * veh['mu_y']
-    Ny = veh['mu_y_M'] * g
+    dmy = factor_grip * sens_y
+    muy = factor_grip * mu_y
+    Ny = mu_y_M * g
 
-    dmx = factor_grip * veh['sens_x']
-    mux = factor_grip * veh['mu_x']
-    Nx = veh['mu_x_M'] * g
+    dmx = factor_grip * sens_x
+    mux = factor_grip * mu_x
+    Nx = mu_x_M * g
 
     # Friction ellipse multiplier
     if numpy.sign(ay) != 0:  # In corner or compensating for banking
@@ -673,7 +653,7 @@ def vehicle_model_comb(veh, tr, v, v_max_next, j, mode, dx, r):
     else:  # In straight or no compensation needed
         ellipse_multi = 1
 
-    # Calculating driver inumpyuts
+    # Calculating driver inputs
     if ax_needed >= 0:  # Throttle required
         ax_tyre_max = 1 / M * (mux + dmx * (Nx - Wd)) * Wd * driven_wheels  # Max pure longitudinal acceleration
         ax_tyre = ax_tyre_max * ellipse_multi  # Max combined longitudinal acceleration
@@ -684,7 +664,7 @@ def vehicle_model_comb(veh, tr, v, v_max_next, j, mode, dx, r):
         ax_power_limit = 1 / M * fx_engine_interp(v)
 
         # Throttle position
-        scale = min([ax_tyre, ax_needed] / ax_power_limit)
+        scale = min([ax_tyre, ax_needed]) / ax_power_limit
         tps = max(min(1, scale), 0)  # Making sure it's between 0 and 1
         bps = 0  # No braking
         ax_com = tps * ax_power_limit  # Final longitudinal acceleration command
@@ -693,17 +673,17 @@ def vehicle_model_comb(veh, tr, v, v_max_next, j, mode, dx, r):
                     Wz - Aero_Df)  # Max pure longitudinal deceleration
         ax_tyre = ax_tyre_max * ellipse_multi  # Max combined longitudinal deceleration
 
-        fx_tyre = min(-[ax_tyre, ax_needed]) * M  # Tyre braking force
-        bps = max(fx_tyre, 0) * veh['beta']  # Brake pressure
+        fx_tyre = min([ax_tyre, -ax_needed]) * M  # Tyre braking force
+        bps = max(fx_tyre, 0) * beta  # Brake pressure
         tps = 0  # No throttle
-        ax_com = -min(-[ax_tyre, ax_needed])  # Final longitudinal deceleration command
+        ax_com = -min([ax_tyre, -ax_needed])  # Final longitudinal deceleration command
 
     # Final results
     ax = ax_com + ax_drag  # Total longitudinal acceleration
     v_next = numpy.sqrt(v ** 2 + 2 * mode * ax * dx)  # Next speed value
 
     # Correcting throttle for full throttle when at v_max on straights
-    if tps > 0 and v / veh['v_max'] >= 0.999:
+    if tps > 0 and v / v_max >= 0.999:
         tps = 1
 
     # Checking for overshoot
@@ -733,21 +713,16 @@ def flag_update(flag, j, k, prg_size, logid, prg_pos):
 
     return flag
 
-def simulate(veh, tr, logid):
-    v_max = numpy.zeros(tr.n, dtype=numpy.float32)
-    bps_v_max = numpy.zeros(tr.n, dtype=numpy.float32)
-    tps_v_max = numpy.zeros(tr.n, dtype=numpy.float32)
-    for i in range(tr.n):
+def simulate(logid, sector=None):
+    v_max = numpy.zeros(n, dtype=numpy.float32)
+    bps_v_max = numpy.zeros(n, dtype=numpy.float32)
+    tps_v_max = numpy.zeros(n, dtype=numpy.float32)
+    for i in range(n):
         v_max[i], tps_v_max[i], bps_v_max[i] = vehicle_model_lat(i, r)
 
     v_apex, apex = scipy.findpeaks(-v_max)
     v_apex = -v_apex
-    if tr.info['config'] == 'Open':
-        if apex[0] != 0:
-            apex = numpy.insert(apex, 0, 0)
-            v_apex = numpy.insert(v_apex, 0, 0)
-        else:
-            v_apex[0] = 0
+    v_apex[0] = 0
 
     if len(apex) == 0:
         v_apex, apex = numpy.min(v_max), numpy.argmin(v_max)
@@ -761,12 +736,12 @@ def simulate(veh, tr, logid):
     bps_apex = bps_v_max[apex]
 
     N = len(apex)
-    flag = numpy.zeros((tr.n, 2), dtype=bool)
-    v = numpy.full((tr.n, N, 2), numpy.inf, dtype=numpy.float32)
-    ax = numpy.zeros((tr.n, N, 2), dtype=numpy.float32)
-    ay = numpy.zeros((tr.n, N, 2), dtype=numpy.float32)
-    tps = numpy.zeros((tr.n, N, 2), dtype=numpy.float32)
-    bps = numpy.zeros((tr.n, N, 2), dtype=numpy.float32)
+    flag = numpy.zeros((n, 2), dtype=bool)
+    v = numpy.full((n, N, 2), numpy.inf, dtype=numpy.float32)
+    ax = numpy.zeros((n, N, 2), dtype=numpy.float32)
+    ay = numpy.zeros((n, N, 2), dtype=numpy.float32)
+    tps = numpy.zeros((n, N, 2), dtype=numpy.float32)
+    bps = numpy.zeros((n, N, 2), dtype=numpy.float32)
 
     prg_size = 30
     prg_pos = 0
@@ -775,50 +750,45 @@ def simulate(veh, tr, logid):
         for k in range(1, 3):
             mode = 1 if k == 1 else -1
             k_rest = 2 if k == 1 else 1
-            if not (tr.info['config'] == 'Open' and mode == -1 and i == 0):
-                i_rest = other_points(i, N)
-                if i_rest is None:
-                    i_rest = i
 
-                j = apex[i]
-                v[j, i, k - 1] = v_apex[i]
-                ay[j, i, k - 1] = v_apex[i] ** 2 * tr.r[j]
-                tps[j, :, 0] = tps_apex[i]
-                bps[j, :, 0] = bps_apex[i]
-                tps[j, :, 1] = tps_apex[i]
-                bps[j, :, 1] = bps_apex[i]
-                flag[j, k - 1] = True
+            i_rest = other_points(i, N)
+            if i_rest is None:
+                i_rest = i
 
-                _, j_next = next_point(j, tr.n, mode, tr.info['config'])
-                if not (tr.info['config'] == 'Open' and mode == 1 and i == 0):
-                    v[j_next, i, k - 1] = v[j, i, k - 1]
-                    j_next, j = next_point(j, tr.n, mode, tr.info['config'])
+            j = apex[i]
+            v[j, i, k - 1] = v_apex[i]
+            ay[j, i, k - 1] = v_apex[i] ** 2 * r[j]
+            tps[j, :, 0] = tps_apex[i]
+            bps[j, :, 0] = bps_apex[i]
+            tps[j, :, 1] = tps_apex[i]
+            bps[j, :, 1] = bps_apex[i]
+            flag[j, k - 1] = True
 
-                while True:
-                    logging.info(f"{i}\t{j}\t{k}\t{tr.x[j]}\t{v[j, i, k - 1]}\t{v_max[j]}")
-                    v[j_next, i, k - 1], ax[j, i, k - 1], ay[j, i, k - 1], tps[j, i, k - 1], bps[
-                        j, i, k - 1], overshoot = vehicle_model_comb(veh, tr, v[j, i, k - 1], v_max[j_next], j, mode)
+            _, j_next = next_point(j, n, mode)
+            v[j_next, i, k - 1] = v[j, i, k - 1]
+            j_next, j = next_point(j, n, mode)
 
-                    if overshoot:
+            while True:
+                logging.info(f"{i}\t{j}\t{k}\t{x[j]}\t{v[j, i, k - 1]}\t{v_max[j]}")
+                v[j_next, i, k - 1], ax[j, i, k - 1], ay[j, i, k - 1], tps[j, i, k - 1], bps[
+                    j, i, k - 1], overshoot = vehicle_model_comb(v[j, i, k - 1], v_max[j_next], j, mode)
+
+                if overshoot:
+                    break
+
+                if flag[j, k - 1] or flag[j, k_rest - 1]:
+                    if max(v[j_next, i, k - 1] >= v[j_next, i_rest, k - 1]) or max(
+                            v[j_next, i, k - 1] > v[j_next, i_rest, k_rest - 1]):
                         break
 
-                    if flag[j, k - 1] or flag[j, k_rest - 1]:
-                        if max(v[j_next, i, k - 1] >= v[j_next, i_rest, k - 1]) or max(
-                                v[j_next, i, k - 1] > v[j_next, i_rest, k_rest - 1]):
-                            break
+                flag = flag_update(flag, j, k, prg_size, logid, prg_pos)
+                j_next, j = next_point(j, n, mode)
 
-                    flag = flag_update(flag, j, k, prg_size, logid, prg_pos)
-                    j_next, j = next_point(j, tr.n, mode, tr.info['config'])
+                if j == apex[i]:
+                    break
 
-                    if tr.info['config'] == 'Closed':
-                        if j == apex[i]:
-                            break
-                    elif tr.info['config'] == 'Open':
-                        if j == tr.n or j == 0:
-                            break
-
-    V, AX, AY, TPS, BPS = numpy.zeros(tr.n), numpy.zeros(tr.n), numpy.zeros(tr.n), numpy.zeros(tr.n), numpy.zeros(tr.n)
-    for i in range(tr.n):
+    V, AX, AY, TPS, BPS = numpy.zeros(n), numpy.zeros(n), numpy.zeros(n), numpy.zeros(n), numpy.zeros(n)
+    for i in range(n):
         IDX = len(v[i, :, 0])
         v = v.tolist()
         V[i], idx = min([v[i, :, 0], v[i, :, 1]])
@@ -833,23 +803,20 @@ def simulate(veh, tr, logid):
             TPS[i] = tps[i, idx - IDX, 1]
             BPS[i] = bps[i, idx - IDX, 1]
 
-    if tr.info['config'] == 'Open':
-        time = numpy.cumsum([tr.dx[1] / V[1]] + list(tr.dx[1:] / V[1:]))
-    else:
-        time = numpy.cumsum(tr.dx / V)
+    time = numpy.cumsum(dx / V)
 
-    sector_time = numpy.zeros(numpy.max(tr.sector))
-    for i in range(1, numpy.max(tr.sector) + 1):
-        sector_time[i - 1] = numpy.max(time[tr.sector == i]) - numpy.min(time[tr.sector == i])
+    sector_time = numpy.zeros(numpy.max(sector))
+    for i in range(1, numpy.max(sector) + 1):
+        sector_time[i - 1] = numpy.max(time[sector == i]) - numpy.min(time[sector == i])
 
     laptime = time[-1]
 
     A = numpy.sqrt(AX ** 2 + AY ** 2)
-    Fz_mass = -M * g * numpy.cos(numpy.radians(tr.bank)) * numpy.cos(numpy.radians(tr.incl))
-    Fz_aero = 0.5 * veh.rho * veh.factor_Cl * veh.Cl * A * V ** 2
+    Fz_mass = -M * g
+    Fz_aero = 0.5 * rho * factor_Cl * Cl * A * V ** 2
     Fz_total = Fz_mass + Fz_aero
-    Fx_aero = 0.5 * veh.rho * veh.factor_Cd * veh.Cd * A * V ** 2
-    Fx_roll = veh.Cr * numpy.abs(Fz_total)
+    Fx_aero = 0.5 * rho * factor_Cd * Cd * A * V ** 2
+    Fx_roll = Cr * numpy.abs(Fz_total)
 
     yaw_rate = V * tr.r
     delta = numpy.zeros(tr.n)
